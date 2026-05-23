@@ -1,0 +1,49 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install check-jsonschema
+        run: pip install --no-cache-dir 'check-jsonschema==0.29.4'
+      - name: Validate the JSON Schema is well-formed (meta-schema check)
+        run: |
+          check-jsonschema --check-metaschema schema/semanticmap.schema.json
+      - name: Validate the example against the schema
+        run: |
+          check-jsonschema \
+            --schemafile schema/semanticmap.schema.json \
+            schema/examples/pizza.semanticmap.yaml
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          # GITLEAKS_LICENSE is not required for OSS / public repositories.
+          # Leaving the env reference here so the action wires up cleanly if
+          # the repo ever moves to a commercial gitleaks plan.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  semgrep:
+    runs-on: ubuntu-latest
+    # Stays in CI so if executable tooling lands later the SAST rule sets
+    # are already wired up. At v0.1.0 this job has nothing to scan beyond
+    # the workflow itself and will exit clean.
+    container: returntocorp/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep ci --config p/owasp-top-ten --config p/supply-chain

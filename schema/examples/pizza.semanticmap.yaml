@@ -1,0 +1,82 @@
+# Example SemanticMap conforming to semanticmap.schema.json (v0.1.0).
+# Demonstrates the canonical transformation:
+#   "Order a large Pepperoni in London"
+#   - "Pepperoni" -> item_id: 12
+#   - "London"    -> store_id: 99
+#   - precondition: stock = "y" must hold before order_pizza is callable
+#
+# This file is illustrative. It is NOT a real API and contains no secrets.
+
+name: pizza-api
+openApiUrl: https://api.pizza.example.com/openapi.json
+baseUrl: https://api.pizza.example.com
+version: "1.0"
+
+tools:
+  - name: order_pizza
+    description: >-
+      Order a pizza for delivery or pickup. Specify size (small, medium, large),
+      topping (e.g. Pepperoni, Margherita), and location (e.g. London, Manchester).
+    parameters:
+      - name: size
+        type: string
+        description: "Pizza size: small, medium, or large"
+        required: true
+        valueMappings:
+          - { humanValue: small,  technicalValue: S }
+          - { humanValue: medium, technicalValue: M }
+          - { humanValue: large,  technicalValue: L }
+      - name: topping
+        type: string
+        description: "Pizza topping e.g. Pepperoni, Margherita, Hawaiian"
+        required: true
+        valueMappings:
+          - { humanValue: Pepperoni,  technicalValue: 12 }
+          - { humanValue: Margherita, technicalValue: 8 }
+          - { humanValue: Hawaiian,   technicalValue: 15 }
+      - name: location
+        type: string
+        description: "Delivery location e.g. London, Manchester"
+        required: true
+        valueMappings:
+          - { humanValue: London,     technicalValue: 99 }
+          - { humanValue: Manchester, technicalValue: 42 }
+      - name: stock
+        type: string
+        description: "Stock availability - must be 'y' to place order"
+        required: true
+        valueMappings:
+          - { humanValue: y, technicalValue: y }
+    endpoint:
+      method: POST
+      path: /v1/res/{location}/req
+      pathParams: [location]
+      bodyParams:
+        size: size
+        topping: item_id
+        stock: stock
+      preconditions:
+        stock: y
+    refinementPrompt: >-
+      Summarize the order confirmation for the user in friendly natural language.
+
+  - name: check_stock
+    description: Check if a pizza item is in stock at a store before ordering.
+    parameters:
+      - name: location
+        type: string
+        required: true
+        valueMappings:
+          - { humanValue: London,     technicalValue: 99 }
+          - { humanValue: Manchester, technicalValue: 42 }
+      - name: topping
+        type: string
+        required: true
+        valueMappings:
+          - { humanValue: Pepperoni,  technicalValue: 12 }
+          - { humanValue: Margherita, technicalValue: 8 }
+          - { humanValue: Hawaiian,   technicalValue: 15 }
+    endpoint:
+      method: GET
+      path: /v1/stock/{location}/{topping}
+      pathParams: [location, topping]

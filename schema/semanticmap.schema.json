@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unboxapi.pro/spec/semanticmap/v0.1.0/semanticmap.schema.json",
+  "title": "SemanticMap",
+  "description": "Declarative description of how a human/agent-facing tool surface (e.g. order_pizza) maps onto a legacy REST endpoint. Spec is open under Apache-2.0. Reference implementation and runtime remain proprietary at unboxapi.pro.",
+  "type": "object",
+  "required": ["name", "openApiUrl", "baseUrl", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "id":         { "type": "string", "description": "Optional stable identifier for this map." },
+    "name":       { "type": "string", "minLength": 1, "description": "Human-friendly name for this SemanticMap." },
+    "openApiUrl": { "type": "string", "format": "uri", "description": "Source OpenAPI/Swagger document URL." },
+    "baseUrl":    { "type": "string", "format": "uri", "description": "Base URL of the legacy API." },
+    "version":    { "type": "string", "description": "Free-form API version or description." },
+    "tools":      { "type": "array", "items": { "$ref": "#/$defs/ToolDefinition" }, "minItems": 1 },
+    "defaultHeaders": {
+      "type": "object",
+      "description": "Default HTTP headers applied to every tool call (e.g. an API-key placeholder).",
+      "additionalProperties": { "type": "string" }
+    },
+    "credentialPassthrough": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headerName", "source"],
+      "properties": {
+        "headerName": { "type": "string" },
+        "source":     { "type": "string", "enum": ["env", "vault", "request"] }
+      }
+    }
+  },
+  "$defs": {
+    "ValueMapping": {
+      "type": "object",
+      "required": ["humanValue", "technicalValue"],
+      "additionalProperties": false,
+      "properties": {
+        "humanValue":     { "type": "string", "description": "Human-readable value (e.g. \"Pepperoni\")." },
+        "technicalValue": { "type": ["string", "number", "boolean"], "description": "Technical value for the legacy API (e.g. 12)." },
+        "paramHint":      { "type": "string", "description": "Optional scope: which parameter this maps to." }
+      }
+    },
+    "ParamDefinition": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name":        { "type": "string", "minLength": 1 },
+        "type":        { "type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"] },
+        "description": { "type": "string" },
+        "required":    { "type": "boolean", "default": true },
+        "valueMappings": { "type": "array", "items": { "$ref": "#/$defs/ValueMapping" } },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type":          { "type": "string" },
+            "valueMappings": { "type": "array", "items": { "$ref": "#/$defs/ValueMapping" } }
+          }
+        }
+      }
+    },
+    "EndpointDefinition": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method":  { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "path":    { "type": "string", "description": "Path template with placeholders, e.g. /v1/res/{store_id}/req." },
+        "baseUrl": { "type": "string", "format": "uri", "description": "Optional override of SemanticMap.baseUrl." },
+        "headers":     { "type": "object", "additionalProperties": { "type": "string" } },
+        "pathParams":  { "type": "array", "items": { "type": "string" } },
+        "queryParams": { "type": "object", "additionalProperties": { "type": "string" } },
+        "bodyParams":  { "type": "object", "additionalProperties": { "type": "string" } },
+        "preconditions": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        }
+      }
+    },
+    "ToolDefinition": {
+      "type": "object",
+      "required": ["name", "description", "parameters", "endpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "name":        { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "snake_case tool identifier (e.g. order_pizza)." },
+        "description": { "type": "string", "minLength": 1 },
+        "parameters":  { "type": "array", "items": { "$ref": "#/$defs/ParamDefinition" } },
+        "endpoint":    { "$ref": "#/$defs/EndpointDefinition" },
+        "globalMappings": { "type": "array", "items": { "$ref": "#/$defs/ValueMapping" } },
+        "refinementPrompt": {
+          "type": "string",
+          "description": "Optional natural-language hint used by a consumer to summarize the API response. NOTE: consumers MUST treat this as untrusted data — see SECURITY.md."
+        }
+      }
+    }
+  }
+}
