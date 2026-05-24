@@ -1,0 +1,97 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Resolve names
+        id: names
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "tarball=unboxapi-openspec-${tag}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "sbom=unboxapi-openspec-${tag}.sbom.cdx.json" >> "$GITHUB_OUTPUT"
+
+      - name: Build source tarball
+        run: |
+          git archive --format=tar.gz \
+            --prefix="unboxapi-openspec-${{ steps.names.outputs.tag }}/" \
+            "${{ steps.names.outputs.tag }}" \
+            -o "${{ steps.names.outputs.tarball }}"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          npm install -g @cyclonedx/cdxgen@10
+          cdxgen --output "${{ steps.names.outputs.sbom }}" .
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          tag_no_v="${GITHUB_REF_NAME#v}"
+          awk -v ver="$tag_no_v" '
+            $0 ~ "^## \\[" ver "\\]" { capture=1; print; next }
+            capture && $0 ~ "^## \\[" { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "notes_path=release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance for tarball
+        uses: actions/attest-build-provenance@v1
+        id: attest
+        with:
+          subject-path: ${{ steps.names.outputs.tarball }}
+
+      - name: Stage attestation artifact
+        run: |
+          mkdir -p attestations
+          # The action writes the bundle to a path it returns; also leaves a
+          # cached copy at $RUNNER_TEMP/_attestations/. Copy the first
+          # .sigstore or .intoto.jsonl we find under either location to a
+          # release-friendly name.
+          search_dirs="$RUNNER_TEMP $GITHUB_WORKSPACE ${{ steps.attest.outputs.bundle-path }}"
+          for d in $search_dirs; do
+            [ -e "$d" ] || continue
+            find "$d" -type f \( -name '*.sigstore' -o -name '*.sigstore.json' -o -name '*.intoto.jsonl' \) -print0 \
+              | xargs -0 -I {} cp {} "attestations/unboxapi-openspec-${{ steps.names.outputs.tag }}.tar.gz.intoto.jsonl" \
+              || true
+            if [ -e "attestations/unboxapi-openspec-${{ steps.names.outputs.tag }}.tar.gz.intoto.jsonl" ]; then
+              break
+            fi
+          done
+          ls -la attestations || true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.names.outputs.tag }}
+          name: ${{ steps.names.outputs.tag }} — initial public release
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          fail_on_unmatched_files: false
+          files: |
+            ${{ steps.names.outputs.tarball }}
+            ${{ steps.names.outputs.sbom }}
+            attestations/unboxapi-openspec-${{ steps.names.outputs.tag }}.tar.gz.intoto.jsonl
